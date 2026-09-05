@@ -347,7 +347,8 @@ export async function markTreatmentCompleted(
     catRabiesMonths: meta.catRabiesMonths,
     appointmentAt: null,
     remindersMuted: false,
-  })
+    userId: meta.userId,
+  }, meta.userId)
 
   if (entry?.dueAt && meta.petName) {
     schedulePetReminders(petId, {
@@ -416,7 +417,8 @@ export async function markAppointmentBooked(
       remindersMuted: false,
       updateLatest: true,
       keepAdministeredAt: true,
-    })
+      userId: meta.userId,
+    }, meta.userId)
   }
 
   schedulePetReminders(petId, {
@@ -469,7 +471,8 @@ export async function muteTreatmentReminders(petId, treatmentKey, meta = {}) {
     remindersMuted: true,
     updateLatest: true,
     keepAdministeredAt: true,
-  })
+    userId: meta.userId,
+  }, meta.userId)
   return getActiveReminders(petId)
 }
 

@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Camera, Cat, Dog, PawPrint, X } from 'lucide-react'
+import { compressImage } from '../utils/compressImage'
 
 const SPECIES_OPTIONS = [
   { value: 'dog', label: 'כלב', icon: Dog },
@@ -47,19 +48,19 @@ export default function AddPetModal({ open, onClose, onSubmit, saving = false })
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
-  function handlePhoto(e) {
+  async function handlePhoto(e) {
     const file = e.target.files?.[0]
     if (!file) return
     if (!file.type.startsWith('image/')) {
       setError('נא לבחור קובץ תמונה בלבד')
       return
     }
-    const reader = new FileReader()
-    reader.onload = () => {
-      update('image', String(reader.result))
+    try {
+      update('image', await compressImage(file))
       setError('')
+    } catch {
+      setError('שגיאה בעיבוד התמונה')
     }
-    reader.readAsDataURL(file)
   }
 
   async function handleSubmit(e) {

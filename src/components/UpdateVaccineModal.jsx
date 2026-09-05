@@ -6,6 +6,7 @@ import {
   computeVaccineOutcome,
   getProtocolsForPet,
 } from '../data/vaccineProtocols'
+import { compressImage } from '../utils/compressImage'
 
 function formatDateHe(iso) {
   if (!iso) return '—'
@@ -106,19 +107,19 @@ export default function UpdateVaccineModal({
 
   if (!open || !pet) return null
 
-  function handlePhoto(e) {
+  async function handlePhoto(e) {
     const file = e.target.files?.[0]
     if (!file) return
     if (!file.type.startsWith('image/')) {
       setError('נא לבחור קובץ תמונה בלבד')
       return
     }
-    const reader = new FileReader()
-    reader.onload = () => {
-      setImage(String(reader.result))
+    try {
+      setImage(await compressImage(file))
       setError('')
+    } catch {
+      setError('שגיאה בעיבוד התמונה')
     }
-    reader.readAsDataURL(file)
   }
 
   async function handleSubmit(e) {

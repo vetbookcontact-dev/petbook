@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Camera, UserRound, X } from 'lucide-react'
+import { compressImage } from '../utils/compressImage'
 
 const EMPTY = {
   fullName: '',
@@ -13,6 +14,7 @@ export default function OwnerProfileModal({
   open,
   onClose,
   onSubmit,
+  onSignOut,
   profile = null,
   saving = false,
   required = false,
@@ -47,21 +49,19 @@ export default function OwnerProfileModal({
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
-  function handlePhoto(e) {
+  async function handlePhoto(e) {
     const file = e.target.files?.[0]
     if (!file) return
     if (!file.type.startsWith('image/')) {
       setError('נא לבחור קובץ תמונה בלבד')
       return
     }
-    // Prefer FileReader base64 so the image persists in localStorage after reload
-    const reader = new FileReader()
-    reader.onload = () => {
-      update('photoURL', String(reader.result))
+    try {
+      update('photoURL', await compressImage(file))
       setError('')
+    } catch {
+      setError('שגיאה בעיבוד התמונה')
     }
-    reader.onerror = () => setError('שגיאה בקריאת התמונה')
-    reader.readAsDataURL(file)
   }
 
   async function handleSubmit(e) {
@@ -238,6 +238,16 @@ export default function OwnerProfileModal({
             >
               {saving ? 'שומר...' : isOnboarding ? 'המשך לאפליקציה' : 'שמירת פרטים'}
             </button>
+            {onSignOut && (
+              <button
+                type="button"
+                onClick={onSignOut}
+                disabled={saving}
+                className="mt-3 w-full py-2 text-sm font-semibold text-slate-500 underline disabled:opacity-50"
+              >
+                התנתקות
+              </button>
+            )}
           </div>
         </form>
       </div>

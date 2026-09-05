@@ -1,0 +1,39 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    match /users/{userId} {
+      allow read, create, update, delete: if isOwner(userId);
+
+      match /pets/{petId} {
+        allow read, create, update, delete: if isOwner(userId);
+
+        match /vaccines/{vaccineId} {
+          allow read, create, update, delete: if isOwner(userId);
+        }
+      }
+    }
+
+    // Legacy top-level collections — read so existing pets can be copied under the user.
+    match /pets/{petId} {
+      allow read, delete: if isOwner(resource.data.userId);
+      allow create: if isOwner(request.resource.data.userId);
+      allow update: if isOwner(resource.data.userId)
+        && request.resource.data.userId == resource.data.userId;
+    }
+
+    match /vaccines/{vaccineId} {
+      allow read, delete: if isOwner(resource.data.userId);
+      allow create: if isOwner(request.resource.data.userId);
+      allow update: if isOwner(resource.data.userId)
+        && request.resource.data.userId == resource.data.userId;
+    }
+  }
+}

@@ -1,12 +1,21 @@
 import {
+  addDoc,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  setDoc,
+  updateDoc,
+  where,
+} from 'firebase/firestore'
+import {
   dogParks,
   emergencyClinics,
   onDutyVeterinarian,
-  pets as seedPets,
   seedParkReports,
   seedParkVisitors,
   toxicFoods,
-  vaccinesByPetId,
   veterinaryClinics,
   vetConsultFlags,
   vetVerdictLevels,
@@ -16,9 +25,11 @@ import {
   getProtocolsForPet,
   statusFromDueAt,
 } from '../data/vaccineProtocols'
+import { db } from '../lib/firebase'
+import { compressImage } from '../utils/compressImage'
 import { evaluateClinicalTriage } from './triageEngine'
 
-/** Swap to Firebase Auth uid when wiring Auth */
+/** Used only for remaining mock localStorage features (parks / consults). */
 export const MOCK_USER_ID = 'mock-user-123'
 
 /** Keep first occurrence of each pet id (guards seed/store/React state duplicates). */
@@ -36,6 +47,12 @@ const delay = (ms = 280) => new Promise((resolve) => setTimeout(resolve, ms))
 const SPECIES_HE = { dog: 'כלב', cat: 'חתול', other: 'אחר' }
 const SEX_HE = { male: 'זכר', female: 'נקבה' }
 
+function requireDb() {
+  if (!db) {
+    throw new Error('Firebase לא מוגדר. מלאו את משתני VITE_FIREBASE_* בקובץ .env')
+  }
+}
+
 function ageYearsFromBirthDate(birthDate) {
   if (!birthDate) return null
   const born = new Date(birthDate)
@@ -46,65 +63,124 @@ function ageYearsFromBirthDate(birthDate) {
   return Math.max(0, Math.round(years * 10) / 10)
 }
 
-function withFirebaseShape(pet, userId = MOCK_USER_ID) {
-  const now = new Date().toISOString()
-  return {
-    ...pet,
-    userId: pet.userId ?? userId,
-    sterilized: pet.sterilized ?? false,
-    birthDate: pet.birthDate ?? null,
-    createdAt: pet.createdAt ?? now,
-    updatedAt: pet.updatedAt ?? now,
-  }
-}
-
-/**
- * Session pet store — mirrors Firestore `pets` collection.
- * Replace mutations with addDoc / updateDoc / getDocs later; UI stays the same.
- */
-const petStore = seedPets.map((pet) =>
-  withFirebaseShape({
-    ...pet,
-    birthDate:
-      pet.id === 'pet-louis'
-        ? '2023-08-16'
-        : pet.id === 'pet-mika'
-          ? '2025-02-16'
-          : null,
-    sterilized: pet.id === 'pet-mika',
-  }),
-)
-
-/** In-memory store so addVaccine mutates session state */
-const vaccineStore = structuredClone(vaccinesByPetId)
-
-export async function getPets(userId = MOCK_USER_ID) {
-  await delay()
-  return structuredClone(
-    uniqueById(petStore.filter((p) => p.userId === userId)),
+function withoutUndefined(value) {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, item]) => item !== undefined),
   )
 }
 
-export async function getPetById(petId) {
-  await delay(150)
-  const pet = petStore.find((p) => p.id === petId)
-  if (!pet) throw new Error('החיה לא נמצאה')
-  return structuredClone(pet)
+function omitId(value) {
+  return Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'id'))
 }
 
-/**
- * Firebase-ready signature: addPet(userId, petData)
- * Future: return addDoc(collection(db, "pets"), { userId, ...petData, createdAt, updatedAt })
- */
-export async function addPet(userId = MOCK_USER_ID, petData) {
-  await delay(450)
+async function prepareImageForFirestore(value) {
+  if (!value) return ''
+  if (/^https?:\/\//i.test(value)) return value
+  return compressImage(value)
+}
+
+function withPetId(snap) {
+  const data = snap.data()
+  return {
+    id: snap.id,
+    ...data,
+    ageYears: ageYearsFromBirthDate(data.birthDate) ?? data.ageYears ?? null,
+    image: data.image || data.photoURL || '',
+  }
+}
+
+function withVaccineId(snap) {
+  return { id: snap.id, ...snap.data() }
+}
+
+function requireUserId(userId) {
+  if (!userId) throw new Error('משתמש לא מחובר')
+  return userId
+}
+
+function petsCol(userId) {
+  return collection(db, 'users', userId, 'pets')
+}
+
+function petDocRef(userId, petId) {
+  return doc(db, 'users', userId, 'pets', petId)
+}
+
+function vaccinesCol(userId, petId) {
+  return collection(db, 'users', userId, 'pets', petId, 'vaccines')
+}
+
+function vaccineDocRef(userId, petId, vaccineId) {
+  return doc(db, 'users', userId, 'pets', petId, 'vaccines', vaccineId)
+}
+
+function sortPets(list) {
+  return uniqueById(list).sort((a, b) =>
+    String(a.createdAt || '').localeCompare(String(b.createdAt || '')),
+  )
+}
+
+async function getLegacyVaccineDocs(userId) {
+  try {
+    const vaxSnap = await getDocs(
+      query(collection(db, 'vaccines'), where('userId', '==', userId)),
+    )
+    return vaxSnap.docs
+  } catch {
+    return []
+  }
+}
+
+/** Copy leftover top-level pets/vaccines under users/{uid} once. */
+async function migrateLegacyPets(userId) {
+  const nestedSnap = await getDocs(petsCol(userId))
+  if (!nestedSnap.empty) return
+
+  const legacySnap = await getDocs(
+    query(collection(db, 'pets'), where('userId', '==', userId)),
+  )
+  if (legacySnap.empty) return
+
+  const legacyVaccines = await getLegacyVaccineDocs(userId)
+
+  for (const snap of legacySnap.docs) {
+    await setDoc(petDocRef(userId, snap.id), snap.data())
+    const forPet = legacyVaccines.filter((vax) => vax.data().petId === snap.id)
+    await Promise.all(
+      forPet.map((vax) => setDoc(vaccineDocRef(userId, snap.id, vax.id), vax.data())),
+    )
+  }
+}
+
+export async function getPets(userId) {
+  requireDb()
+  if (!userId) return []
+  try {
+    await migrateLegacyPets(userId)
+  } catch {
+    /* keep loading nested pets even if legacy copy fails */
+  }
+  const snap = await getDocs(petsCol(userId))
+  return sortPets(snap.docs.map(withPetId))
+}
+
+export async function getPetById(userId, petId) {
+  requireDb()
+  requireUserId(userId)
+  const snap = await getDoc(petDocRef(userId, petId))
+  if (!snap.exists()) throw new Error('החיה לא נמצאה')
+  return withPetId(snap)
+}
+
+export async function addPet(userId, petData) {
+  requireDb()
+  requireUserId(userId)
   const now = new Date().toISOString()
   const type = petData.type ?? 'other'
   const sex = petData.sex ?? 'male'
 
-  const doc = {
-    // Firestore would assign id via addDoc; mock uses local id
-    id: `pet-${Date.now()}`,
+  const image = await prepareImageForFirestore(petData.image)
+  const payload = withoutUndefined({
     userId,
     name: petData.name,
     type,
@@ -117,35 +193,33 @@ export async function addPet(userId = MOCK_USER_ID, petData) {
     ageYears: ageYearsFromBirthDate(petData.birthDate),
     weightKg: Number(petData.weightKg) || 0,
     chip: petData.chip ?? '',
-    image: petData.image || '',
+    image,
+    photoURL: image,
     color: petData.color ?? '',
     createdAt: now,
     updatedAt: now,
-  }
+  })
 
-  petStore.push(doc)
-  if (!vaccineStore[doc.id]) vaccineStore[doc.id] = []
-
-  return structuredClone(doc)
+  const petRef = await addDoc(petsCol(userId), payload)
+  return { id: petRef.id, ...payload }
 }
 
-/**
- * Firebase-ready: updateDoc(doc(db, "pets", petId), { ...updatedData, updatedAt })
- */
-export async function updatePet(petId, updatedData) {
-  await delay(400)
-  const index = petStore.findIndex((p) => p.id === petId)
-  if (index === -1) throw new Error('החיה לא נמצאה')
-
-  const current = petStore[index]
+export async function updatePet(userId, petId, updatedData) {
+  requireDb()
+  const current = await getPetById(userId, petId)
   const type = updatedData.type ?? current.type
   const sex = updatedData.sex ?? current.sex
   const birthDate =
     updatedData.birthDate !== undefined ? updatedData.birthDate : current.birthDate
 
-  const next = {
+  let image =
+    updatedData.image !== undefined ? updatedData.image || '' : current.image || ''
+  image = await prepareImageForFirestore(image)
+
+  const next = withoutUndefined({
     ...current,
     ...updatedData,
+    userId,
     type,
     speciesHe: SPECIES_HE[type] ?? current.speciesHe ?? 'אחר',
     sex,
@@ -161,48 +235,34 @@ export async function updatePet(petId, updatedData) {
         ? Number(updatedData.weightKg) || 0
         : current.weightKg,
     chip: updatedData.chip !== undefined ? updatedData.chip ?? '' : current.chip,
-    image: updatedData.image !== undefined ? updatedData.image || '' : current.image,
+    image,
+    photoURL: image,
     updatedAt: new Date().toISOString(),
-  }
+  })
 
-  petStore[index] = next
-  return structuredClone(next)
+  await updateDoc(petDocRef(userId, petId), omitId(next))
+  return { ...next, id: petId }
 }
 
-const PROFILE_STORAGE_KEY = `vetbook-user-profile-${MOCK_USER_ID}`
-
-function readProfileFromStorage() {
-  try {
-    const raw = localStorage.getItem(PROFILE_STORAGE_KEY)
-    if (!raw) return null
-    return JSON.parse(raw)
-  } catch {
-    return null
-  }
+export async function getUserProfile(userId) {
+  requireDb()
+  if (!userId) return null
+  const snap = await getDoc(doc(db, 'users', userId))
+  if (!snap.exists()) return null
+  return { id: snap.id, ...snap.data() }
 }
 
-function writeProfileToStorage(profile) {
-  localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile))
-}
-
-/**
- * Firebase-ready: getDoc(doc(db, "users", userId))
- * Returns null when the owner profile document does not exist yet.
- */
-export async function getUserProfile(userId = MOCK_USER_ID) {
-  await delay(200)
-  const stored = readProfileFromStorage()
-  if (!stored || stored.id !== userId) return null
-  return structuredClone(stored)
-}
-
-/**
- * Firebase-ready: setDoc(doc(db, "users", userId), profileData, { merge: true })
- */
-export async function updateUserProfile(profileData, userId = MOCK_USER_ID) {
-  await delay(350)
-  const existing = readProfileFromStorage()
+export async function updateUserProfile(profileData, userId) {
+  requireDb()
+  if (!userId) throw new Error('משתמש לא מחובר')
+  const existing = await getUserProfile(userId)
   const now = new Date().toISOString()
+
+  let photoURL =
+    profileData.photoURL !== undefined
+      ? profileData.photoURL || ''
+      : existing?.photoURL ?? existing?.avatar ?? ''
+  photoURL = await prepareImageForFirestore(photoURL)
 
   const profile = {
     id: userId,
@@ -210,55 +270,60 @@ export async function updateUserProfile(profileData, userId = MOCK_USER_ID) {
     phone: profileData.phone?.trim() ?? existing?.phone ?? '',
     address: profileData.address?.trim() ?? existing?.address ?? '',
     email: profileData.email?.trim() ?? existing?.email ?? '',
-    // Firebase-ready: later upload to Storage and store download URL here
-    photoURL:
-      profileData.photoURL !== undefined
-        ? profileData.photoURL || ''
-        : existing?.photoURL ?? existing?.avatar ?? '',
+    photoURL,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
     onboardingComplete: true,
   }
 
-  writeProfileToStorage(profile)
-  return structuredClone(profile)
+  await setDoc(doc(db, 'users', userId), profile, { merge: true })
+  return profile
 }
 
-export async function getVaccines(petId) {
-  await delay()
-  return structuredClone(vaccineStore[petId] ?? [])
+export async function getVaccines(petId, userId) {
+  requireDb()
+  if (!petId || !userId) return []
+  const snap = await getDocs(vaccinesCol(userId, petId))
+  return snap.docs
+    .map(withVaccineId)
+    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
 }
 
-export async function addVaccine(petId, vaccineData) {
-  await delay(400)
-  if (!vaccineStore[petId]) vaccineStore[petId] = []
-
-  const entry = {
-    id: `vax-${Date.now()}`,
+export async function addVaccine(petId, vaccineData, userId) {
+  requireDb()
+  const uid = requireUserId(userId || vaccineData.userId)
+  const pet = await getPetById(uid, petId)
+  const now = new Date().toISOString()
+  const image = await prepareImageForFirestore(vaccineData.image)
+  const payload = withoutUndefined({
     status: 'valid',
     clinic: vaccineData.clinic ?? 'מרפאת וט-קר, תל אביב',
-    administeredAt: vaccineData.administeredAt ?? new Date().toISOString().slice(0, 10),
+    administeredAt: vaccineData.administeredAt ?? now.slice(0, 10),
     dueAt: vaccineData.dueAt ?? null,
     batch: vaccineData.batch ?? 'MANUAL-UPLOAD',
     notes: vaccineData.notes ?? 'הועלה מצילום מדבקת חיסון',
     ...vaccineData,
-  }
+    petId,
+    userId: pet.userId || uid,
+    image,
+    createdAt: now,
+    updatedAt: now,
+  })
 
-  vaccineStore[petId] = [entry, ...vaccineStore[petId]]
-  return structuredClone(entry)
+  const vaccineRef = await addDoc(vaccinesCol(uid, petId), payload)
+  return { id: vaccineRef.id, ...payload }
 }
 
 /**
- * Firebase-ready: updateDoc / set merge on pets/{petId} vaccine records.
  * Upserts by id; otherwise appends a new dose so puppy/primary series history is preserved.
  * Recalculates dueAt + status using Israeli protocol rules.
  */
-export async function updateVaccineRecord(petId, vaccineData) {
-  await delay(400)
-  if (!vaccineStore[petId]) vaccineStore[petId] = []
-
-  const list = vaccineStore[petId]
-  const petType = vaccineData.petType ?? 'dog'
+export async function updateVaccineRecord(petId, vaccineData, userId) {
+  requireDb()
+  const uid = requireUserId(userId || vaccineData.userId)
+  const pet = await getPetById(uid, petId)
+  const list = await getVaccines(petId, uid)
+  const petType = vaccineData.petType ?? pet.type ?? 'dog'
   const protocols = getProtocolsForPet({ type: petType })
   const protocol =
     protocols.find((p) => p.key === vaccineData.protocolKey) ||
@@ -269,8 +334,8 @@ export async function updateVaccineRecord(petId, vaccineData) {
 
   const petHint = {
     type: petType,
-    birthDate: vaccineData.birthDate ?? null,
-    ageYears: vaccineData.ageYears ?? null,
+    birthDate: vaccineData.birthDate ?? pet.birthDate ?? null,
+    ageYears: vaccineData.ageYears ?? pet.ageYears ?? null,
   }
 
   const outcome = computeVaccineOutcome({
@@ -291,24 +356,25 @@ export async function updateVaccineRecord(petId, vaccineData) {
   const status = statusFromDueAt(dueAt, { notRequired })
 
   const base = {
+    petId,
+    userId: pet.userId || uid,
     name: protocol?.name ?? vaccineData.name ?? 'חיסון',
     nameEn: protocol?.nameEn ?? vaccineData.nameEn ?? '',
     protocolKey: protocol?.key ?? vaccineData.protocolKey ?? null,
     administeredAt,
     dueAt,
     status,
-    stageLabel: outcome.stageLabel,
-    displayName: outcome.displayName,
+    stageLabel: outcome.stageLabel ?? null,
+    displayName: outcome.displayName ?? null,
     productLabel: outcome.productLabel || vaccineData.productLabel || null,
     fleaProductKey: vaccineData.fleaProductKey || null,
     customDueAt: vaccineData.customDueAt || null,
     catRabiesMonths: vaccineData.catRabiesMonths || null,
-    doseNumber: outcome.doseNumber,
+    doseNumber: outcome.doseNumber ?? null,
     forceSpirocerca: Boolean(vaccineData.forceSpirocerca),
     clinic: vaccineData.clinic?.trim() || 'מרפאת וט-קר, תל אביב',
     notes: vaccineData.notes?.trim() || '',
     batch: vaccineData.batch || `UPD-${Date.now().toString().slice(-6)}`,
-    image: vaccineData.image || '',
     updatedAt: new Date().toISOString(),
   }
 
@@ -323,7 +389,6 @@ export async function updateVaccineRecord(petId, vaccineData) {
     ? list.findIndex((v) => v.id === vaccineData.id)
     : -1
 
-  // Soft-match latest protocol record only for meta updates (appointment / mute)
   if (
     matchIndex < 0 &&
     vaccineData.protocolKey &&
@@ -336,31 +401,34 @@ export async function updateVaccineRecord(petId, vaccineData) {
     )
   }
 
+  const matched = matchIndex >= 0 ? list[matchIndex] : null
+  let image = vaccineData.image !== undefined ? vaccineData.image || '' : matched?.image || ''
+  image = await prepareImageForFirestore(image)
+  base.image = image || ''
+
   let entry
-  if (matchIndex >= 0) {
-    entry = {
-      ...list[matchIndex],
+  if (matched) {
+    entry = withoutUndefined({
+      ...matched,
       ...base,
-      id: list[matchIndex].id,
-      // Keep prior administeredAt when only meta fields change without new dose
+      id: matched.id,
       administeredAt: vaccineData.keepAdministeredAt
-        ? list[matchIndex].administeredAt
+        ? matched.administeredAt
         : administeredAt,
-      dueAt: vaccineData.dueAt ?? list[matchIndex].dueAt ?? dueAt,
-    }
+      dueAt: vaccineData.dueAt ?? matched.dueAt ?? dueAt,
+    })
     if (vaccineData.appointmentAt === null) entry.appointmentAt = null
-    list[matchIndex] = entry
+    await updateDoc(vaccineDocRef(uid, petId, matched.id), omitId(entry))
   } else {
-    entry = {
-      id: `vax-${Date.now()}`,
+    entry = withoutUndefined({
       createdAt: new Date().toISOString(),
       ...base,
-    }
-    list.unshift(entry)
+    })
+    const vaccineRef = await addDoc(vaccinesCol(uid, petId), entry)
+    entry = { ...entry, id: vaccineRef.id }
   }
 
-  vaccineStore[petId] = list
-  return structuredClone(entry)
+  return entry
 }
 
 export async function getToxicFoods({ category, query } = {}) {

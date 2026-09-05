@@ -80,6 +80,7 @@ function tableStatusBadge(row) {
 
 function rowMeta(pet, row, ownerAddress) {
   return {
+    userId: pet.userId,
     petName: pet.name,
     petType: pet.type,
     birthDate: pet.birthDate,
@@ -372,7 +373,7 @@ export default function Vaccines({
     setSaving(true)
     try {
       if (data.protocolKey === 'rabies' && isCat) setTrackCatRabies(true)
-      await updateVaccineRecord(pet.id, data)
+      await updateVaccineRecord(pet.id, data, pet.userId)
       setModalOpen(false)
       setActiveRow(null)
       await onRefresh?.()
@@ -460,7 +461,7 @@ export default function Vaccines({
 
         <div className="flex items-center gap-3">
           <PetImage
-            src={pet.image}
+            src={pet.image || pet.photoURL}
             alt={pet.name}
             className="h-12 w-12 aspect-square rounded-full border border-emerald-500"
             iconClassName="h-5 w-5"

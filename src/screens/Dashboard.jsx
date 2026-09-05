@@ -199,7 +199,7 @@ export default function Dashboard({
                     }`}
                   >
                     <PetImage
-                      src={pet.image}
+                      src={pet.image || pet.photoURL}
                       alt={pet.name}
                       className="h-14 w-14 shrink-0 rounded-2xl"
                       iconClassName="h-6 w-6"
