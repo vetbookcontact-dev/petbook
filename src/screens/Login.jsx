@@ -1,15 +1,16 @@
 import { useState } from 'react'
 import { PawPrint } from 'lucide-react'
 import { isFirebaseConfigured } from '../lib/firebase'
-import { authErrorMessage, signInWithGoogle } from '../services/authService'
+import { authErrorMessage, isRedirectSignInPending, signInWithGoogle } from '../services/authService'
 
-export default function Login({ redirectPending = false }) {
-  const [busy, setBusy] = useState(false)
+export default function Login() {
+  const [busy, setBusy] = useState(isRedirectSignInPending)
   const [error, setError] = useState('')
   const configured = isFirebaseConfigured
+  const waiting = busy
 
   async function handleGoogle() {
-    if (!configured || busy) return
+    if (!configured || waiting) return
     setError('')
     setBusy(true)
     try {
@@ -20,7 +21,17 @@ export default function Login({ redirectPending = false }) {
     }
   }
 
-  const waiting = busy || redirectPending
+  if (waiting) {
+    return (
+      <div
+        dir="rtl"
+        className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center bg-slate-50 px-6 text-slate-900"
+      >
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-brand-200 border-t-brand-700" />
+        <p className="mt-3 text-sm font-medium text-slate-500">מתחבר לחשבון Google...</p>
+      </div>
+    )
+  }
 
   return (
     <div
@@ -61,7 +72,7 @@ export default function Login({ redirectPending = false }) {
           className="flex w-full items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white py-3.5 text-sm font-bold text-slate-800 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <GoogleMark />
-          {waiting ? 'מתחבר...' : 'התחברות עם Google'}
+          התחברות עם Google
         </button>
       </div>
     </div>

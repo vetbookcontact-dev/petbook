@@ -44,6 +44,27 @@ npm run dev
 4. Deploy. אחרי שיש URL, הוסיפו אותו ל-Authorized domains ב-Firebase Auth.
 5. Redeploy אם שיניתם env אחרי ה-build הראשון.
 
+## 4. Go-live (חשבון Netlify + Firebase)
+
+מהמחשב שלכם, אחרי `netlify login` ו-`firebase login`:
+
+```powershell
+# 1) משתני VITE_* ב-Netlify + פריסה
+npx netlify link
+npx netlify env:import .env
+npm run build
+npx netlify deploy --prod --dir=dist
+
+# 2) פרסום כללי Firestore
+npx firebase deploy --only firestore:rules
+
+# 3) Authorized domains
+# העתיקו את ה-URL מ-Netlify (למשל xxx.netlify.app)
+# Firebase Console → Authentication → Settings → Authorized domains → Add
+```
+
+חמשת המשתנים: `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`.
+
 ## בדיקה אחרי העלאה
 
 - התחברות Google

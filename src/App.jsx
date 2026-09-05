@@ -8,12 +8,7 @@ import FoodChecker from './screens/FoodChecker'
 import Emergency from './screens/Emergency'
 import DogParks from './screens/DogParks'
 import Login from './screens/Login'
-import {
-  completeRedirectSignIn,
-  isRedirectSignInPending,
-  signOutUser,
-  subscribeToAuth,
-} from './services/authService'
+import { completeRedirectSignIn, signOutUser, subscribeToAuth } from './services/authService'
 import {
   addPet,
   getPets,
@@ -38,7 +33,7 @@ function profileDraftFromAuth(user) {
 export default function App() {
   const [authReady, setAuthReady] = useState(false)
   const [user, setUser] = useState(null)
-  const [redirectPending, setRedirectPending] = useState(isRedirectSignInPending)
+  const [handshakeDone, setHandshakeDone] = useState(false)
   const [tab, setTab] = useState('home')
   const [pets, setPets] = useState([])
   const [activePetId, setActivePetId] = useState(null)
@@ -91,22 +86,41 @@ export default function App() {
 
   useEffect(() => {
     let alive = true
-    completeRedirectSignIn().finally(() => {
-      if (alive) setRedirectPending(false)
-    })
+    let firstAuthEvent = false
+    let redirectSettled = false
+
+    function maybeReady() {
+      if (alive && firstAuthEvent && redirectSettled) {
+        setAuthReady(true)
+        setHandshakeDone(true)
+      }
+    }
+
+    completeRedirectSignIn()
+      .then((result) => {
+        if (!alive) return
+        if (result?.user) setUser(result.user)
+      })
+      .finally(() => {
+        redirectSettled = true
+        maybeReady()
+      })
+
     const unsub = subscribeToAuth((nextUser) => {
       if (!alive) return
+      firstAuthEvent = true
       setUser(nextUser)
-      setAuthReady(true)
-      if (!nextUser) {
-        resetSession()
-        setLoading(false)
-      } else {
+      if (nextUser) {
         setLoading(true)
         setProfileReady(false)
         setLoadError('')
+      } else if (redirectSettled) {
+        resetSession()
+        setLoading(false)
       }
+      maybeReady()
     })
+
     return () => {
       alive = false
       unsub()
@@ -114,39 +128,44 @@ export default function App() {
   }, [resetSession])
 
   useEffect(() => {
-    if (!authReady || !userId) return
+    if (!authReady || !handshakeDone || !userId) return
 
     let alive = true
     ;(async () => {
+      const profile = await getUserProfile(userId).catch(() => null)
+      if (!alive) return
+      const nextProfile = profile || profileDraftFromAuth(user)
+      setOwnerProfile(nextProfile)
+
+      let uniquePets = []
       try {
-        const [list, profile] = await Promise.all([
-          getPets(userId),
-          getUserProfile(userId),
-        ])
-        if (!alive) return
-        const uniquePets = uniqueById(list)
-        setPets(uniquePets)
-        setActivePetId(uniquePets[0]?.id ?? null)
-        const nextProfile = profile || profileDraftFromAuth(user)
-        setOwnerProfile(nextProfile)
-        await refreshVaccinesMap(uniquePets, userId)
-        if (!nextProfile?.onboardingComplete) {
-          setProfileModalOpen(true)
-        }
+        uniquePets = uniqueById(await getPets(userId))
       } catch (error) {
         if (!alive) return
         setLoadError(error?.message || 'טעינת הנתונים נכשלה')
-      } finally {
-        if (alive) {
-          setProfileReady(true)
-          setLoading(false)
+      }
+      if (!alive) return
+      setPets(uniquePets)
+      setActivePetId(uniquePets[0]?.id ?? null)
+
+      if (uniquePets.length) {
+        try {
+          await refreshVaccinesMap(uniquePets, userId)
+        } catch {
+          /* stay signed in even if vaccines fail */
         }
       }
+
+      if (!nextProfile?.onboardingComplete) {
+        setProfileModalOpen(true)
+      }
+      setProfileReady(true)
+      setLoading(false)
     })()
     return () => {
       alive = false
     }
-  }, [authReady, user, userId, refreshVaccinesMap])
+  }, [authReady, handshakeDone, user, userId, refreshVaccinesMap])
 
   async function handleAddPet(petData) {
     if (!userId) return null
@@ -193,7 +212,7 @@ export default function App() {
     resetSession()
   }
 
-  if (!authReady || redirectPending) {
+  if (!authReady || !handshakeDone) {
     return (
       <AppShell>
         <LoadingState />
@@ -202,7 +221,7 @@ export default function App() {
   }
 
   if (!user) {
-    return <Login redirectPending={redirectPending} />
+    return <Login />
   }
 
   return (

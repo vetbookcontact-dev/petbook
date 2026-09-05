@@ -10,6 +10,8 @@ import { auth, isFirebaseConfigured } from '../lib/firebase'
 
 const REDIRECT_FLAG = 'vetbook-auth-redirect'
 
+let redirectResultPromise = null
+
 function requireAuth() {
   if (!isFirebaseConfigured || !auth) {
     throw new Error('Firebase לא מוגדר. מלאו את משתני VITE_FIREBASE_* בקובץ .env')
@@ -18,7 +20,11 @@ function requireAuth() {
 }
 
 function isLikelyMobile() {
-  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent || ''
+  if (/Android|iPhone|iPad|iPod/i.test(ua)) return true
+  if (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) return true
+  return false
 }
 
 function googleProvider() {
@@ -27,12 +33,40 @@ function googleProvider() {
   return provider
 }
 
+function setRedirectFlag() {
+  try {
+    localStorage.setItem(REDIRECT_FLAG, '1')
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+function clearRedirectFlag() {
+  try {
+    localStorage.removeItem(REDIRECT_FLAG)
+    sessionStorage.removeItem(REDIRECT_FLAG)
+  } catch {
+    /* ignore */
+  }
+}
+
+export function isRedirectSignInPending() {
+  try {
+    return (
+      localStorage.getItem(REDIRECT_FLAG) === '1' ||
+      sessionStorage.getItem(REDIRECT_FLAG) === '1'
+    )
+  } catch {
+    return false
+  }
+}
+
 export async function signInWithGoogle() {
   const firebaseAuth = requireAuth()
   const provider = googleProvider()
 
   if (isLikelyMobile()) {
-    sessionStorage.setItem(REDIRECT_FLAG, '1')
+    setRedirectFlag()
     await signInWithRedirect(firebaseAuth, provider)
     return
   }
@@ -41,7 +75,7 @@ export async function signInWithGoogle() {
     return await signInWithPopup(firebaseAuth, provider)
   } catch (error) {
     if (error?.code === 'auth/popup-blocked') {
-      sessionStorage.setItem(REDIRECT_FLAG, '1')
+      setRedirectFlag()
       await signInWithRedirect(firebaseAuth, provider)
       return
     }
@@ -49,20 +83,25 @@ export async function signInWithGoogle() {
   }
 }
 
-export async function completeRedirectSignIn() {
-  if (!auth) return null
-  try {
-    return await getRedirectResult(auth)
-  } finally {
-    sessionStorage.removeItem(REDIRECT_FLAG)
+/** Single-flight: getRedirectResult can be consumed only once (Strict Mode remounts). */
+export function completeRedirectSignIn() {
+  if (!auth) return Promise.resolve(null)
+  if (!redirectResultPromise) {
+    redirectResultPromise = getRedirectResult(auth)
+      .catch((error) => {
+        if (error?.code === 'auth/no-auth-event') return null
+        console.warn('Google redirect handshake failed', error)
+        return null
+      })
+      .finally(() => {
+        clearRedirectFlag()
+      })
   }
-}
-
-export function isRedirectSignInPending() {
-  return sessionStorage.getItem(REDIRECT_FLAG) === '1'
+  return redirectResultPromise
 }
 
 export function signOutUser() {
+  clearRedirectFlag()
   return firebaseSignOut(requireAuth())
 }
 
