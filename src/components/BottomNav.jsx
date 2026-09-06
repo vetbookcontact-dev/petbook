@@ -10,7 +10,7 @@ const tabs = [
 
 export default function BottomNav({ active, onChange }) {
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-50 mx-auto max-w-md border-t border-slate-200/80 bg-white/95 backdrop-blur-md safe-bottom shadow-[0_-8px_30px_rgba(15,23,42,0.06)]">
+    <nav className="safe-bottom fixed inset-x-0 bottom-0 z-50 mx-auto w-full max-w-md border-t border-slate-200/80 bg-white/95 shadow-[0_-8px_30px_rgba(15,23,42,0.06)] backdrop-blur-md md:max-w-6xl">
       <ul className="grid grid-cols-5 gap-0 px-1 pt-2 pb-1">
         {tabs.map(({ id, label, icon: Icon, danger }) => {
           const isActive = active === id

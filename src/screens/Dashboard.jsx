@@ -183,7 +183,7 @@ export default function Dashboard({
             </div>
           </button>
         ) : (
-          <ul className="space-y-2.5">
+          <ul className="grid grid-cols-1 gap-2.5 md:grid-cols-2 md:gap-4">
             {pets.map((pet) => {
               const selected = pet.id === activePet?.id
               const chip = vaccineChip(vaccinesByPetId[pet.id] ?? [])
@@ -264,7 +264,7 @@ export default function Dashboard({
 
       <section>
         <h3 className="mb-3 text-sm font-bold text-slate-700">פעולות מהירות</h3>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {actions.map(({ id, label, desc, icon: Icon, tone }) => (
             <button
               key={id}

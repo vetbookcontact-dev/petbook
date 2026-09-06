@@ -226,7 +226,7 @@ export default function App() {
 
   return (
     <AppShell>
-      <div className="px-4 pt-5">
+      <div className="px-4 pt-5 md:px-8">
         {loading && <LoadingState />}
 
         {!loading && loadError && (
@@ -321,7 +321,7 @@ function AppShell({ children }) {
   return (
     <div
       dir="rtl"
-      className="max-w-md mx-auto min-h-screen bg-slate-50 text-slate-900 pb-20"
+      className="mx-auto min-h-screen w-full max-w-md bg-slate-50 pb-20 text-slate-900 md:max-w-6xl"
     >
       {children}
     </div>

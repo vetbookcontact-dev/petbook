@@ -10,7 +10,10 @@ import { getFirestore } from 'firebase/firestore'
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  authDomain:
+    typeof window !== 'undefined' && window.location.hostname !== 'localhost'
+      ? window.location.hostname
+      : import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'petbooki.firebaseapp.com',
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
@@ -18,7 +21,6 @@ const firebaseConfig = {
 
 export const isFirebaseConfigured = Boolean(
   firebaseConfig.apiKey &&
-    firebaseConfig.authDomain &&
     firebaseConfig.projectId &&
     firebaseConfig.appId,
 )

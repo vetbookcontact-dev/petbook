@@ -448,7 +448,7 @@ export default function Vaccines({
     permission !== 'granted' && typeof Notification !== 'undefined'
 
   return (
-    <div className="mx-auto w-full max-w-md space-y-4">
+    <div className="mx-auto w-full max-w-md space-y-4 md:max-w-none">
       <header className="rounded-2xl bg-white p-3 shadow-soft ring-1 ring-slate-100">
         <button
           type="button"
