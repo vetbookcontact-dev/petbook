@@ -97,7 +97,7 @@ function showBrowserNotification(title, body, tag) {
       tag,
       lang: 'he',
       dir: 'rtl',
-      icon: '/vite.svg',
+      icon: '/app-icon.png',
     })
     n.onclick = () => {
       window.focus()

@@ -126,7 +126,14 @@ export default function Dashboard({
     <div className="space-y-5">
       <header className="flex items-start justify-between gap-3 pt-1">
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-brand-600">וט-בוק</p>
+          <div className="mb-1 flex items-center gap-2">
+            <img
+              src="/app-icon.png"
+              alt=""
+              className="h-8 w-8 rounded-full bg-white object-contain ring-1 ring-brand-100"
+            />
+            <p className="text-sm font-medium text-brand-600">וט-בוק</p>
+          </div>
           <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">
             {welcomeHeading(ownerName)}
           </h1>

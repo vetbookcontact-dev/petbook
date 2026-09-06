@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { PawPrint } from 'lucide-react'
 import { isFirebaseConfigured } from '../lib/firebase'
 import { authErrorMessage, isRedirectSignInPending, signInWithGoogle } from '../services/authService'
 
@@ -40,9 +39,11 @@ export default function Login() {
     >
       <div className="rounded-3xl bg-white p-7 shadow-soft ring-1 ring-slate-100">
         <div className="mb-6 flex flex-col items-center text-center">
-          <span className="mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-brand-100 text-brand-700">
-            <PawPrint className="h-8 w-8" />
-          </span>
+          <img
+            src="/app-icon.png"
+            alt="וט-בוק"
+            className="mb-4 h-20 w-20 rounded-full bg-white object-contain shadow-soft ring-2 ring-brand-100"
+          />
           <p className="text-sm font-semibold text-brand-600">וט-בוק</p>
           <h1 className="mt-1 text-2xl font-extrabold tracking-tight">
             פנקס וטרינרי דיגיטלי

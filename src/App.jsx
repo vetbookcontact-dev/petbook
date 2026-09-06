@@ -332,6 +332,11 @@ function LoadingState() {
   return (
     <div className="flex min-h-[60vh] items-center justify-center">
       <div className="text-center">
+        <img
+          src="/app-icon.png"
+          alt="וט-בוק"
+          className="mx-auto mb-3 h-14 w-14 rounded-full bg-white object-contain shadow-soft ring-1 ring-brand-100"
+        />
         <div className="mx-auto mb-3 h-10 w-10 animate-spin rounded-full border-4 border-brand-200 border-t-brand-700" />
         <p className="text-sm font-medium text-slate-500">טוען את וט-בוק...</p>
       </div>
