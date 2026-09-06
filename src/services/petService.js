@@ -1218,12 +1218,37 @@ export function buildClinicWhatsAppUrl(clinic, petName) {
 }
 
 /**
- * Clinical triage API — wraps the emergency decision matrix.
+ * Clinical triage: local red-flag matrix first, then Gemini when available.
  * Never advises measuring rectal temperature at home.
  */
 export async function assessSymptoms(input) {
-  await delay(700)
-  return evaluateClinicalTriage(input)
+  const local = evaluateClinicalTriage(input)
+  if (local.isEmergency || local.color === 'red') {
+    return local
+  }
+
+  try {
+    const res = await fetch('/.netlify/functions/triage', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: input.message,
+        petName: input.petName,
+        species: input.species,
+      }),
+    })
+    if (!res.ok) return local
+    const data = await res.json()
+    if (!data?.advice) return local
+    return {
+      ...local,
+      advice: data.advice,
+      disclaimer: data.disclaimer || local.disclaimer,
+      category: data.category || 'gemini',
+    }
+  } catch {
+    return local
+  }
 }
 
 /* ── Live on-duty veterinarian consult (mock queue) ── */
