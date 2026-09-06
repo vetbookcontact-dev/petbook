@@ -65,6 +65,7 @@ export default function Dashboard({
   onNavigate,
   onAddPet,
   onUpdatePet,
+  onDeletePet,
   onOpenProfile,
   savingPet = false,
 }) {
@@ -120,6 +121,12 @@ export default function Dashboard({
     if (!editingPet) return
     const updated = await onUpdatePet(editingPet.id, updatedData)
     if (updated) setEditingPet(null)
+  }
+
+  async function handleDeletePet() {
+    if (!editingPet) return
+    const removed = await onDeletePet?.(editingPet.id)
+    if (removed) setEditingPet(null)
   }
 
   return (
@@ -294,6 +301,7 @@ export default function Dashboard({
         pet={editingPet}
         onClose={() => !savingPet && setEditingPet(null)}
         onSubmit={handleEditPet}
+        onDelete={handleDeletePet}
         saving={savingPet}
       />
     </div>

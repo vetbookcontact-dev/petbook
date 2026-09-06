@@ -11,6 +11,7 @@ import Login from './screens/Login'
 import { completeRedirectSignIn, signOutUser, subscribeToAuth } from './services/authService'
 import {
   addPet,
+  deletePet,
   getPets,
   getUserProfile,
   getVaccines,
@@ -194,6 +195,28 @@ export default function App() {
     }
   }
 
+  async function handleDeletePet(petId) {
+    if (!userId || !petId) return false
+    setSavingPet(true)
+    try {
+      await deletePet(userId, petId)
+      const remaining = pets.filter((p) => p.id !== petId)
+      setPets(remaining)
+      setVaccinesByPetId((prev) => {
+        const next = { ...prev }
+        delete next[petId]
+        return next
+      })
+      if (activePetId === petId) {
+        setActivePetId(remaining[0]?.id ?? null)
+        setTab('home')
+      }
+      return true
+    } finally {
+      setSavingPet(false)
+    }
+  }
+
   async function handleSaveProfile(profileData) {
     if (!userId) return null
     setSavingProfile(true)
@@ -253,6 +276,7 @@ export default function App() {
             onNavigate={setTab}
             onAddPet={handleAddPet}
             onUpdatePet={handleUpdatePet}
+            onDeletePet={handleDeletePet}
             onOpenProfile={() => setProfileModalOpen(true)}
             savingPet={savingPet}
           />
@@ -266,6 +290,7 @@ export default function App() {
             onBack={() => setTab('home')}
             onRefresh={() => refreshVaccines(activePet.id)}
             onUpdatePet={handleUpdatePet}
+            onDeletePet={handleDeletePet}
             savingPet={savingPet}
           />
         )}

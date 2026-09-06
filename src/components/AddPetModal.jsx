@@ -73,10 +73,15 @@ export default function AddPetModal({ open, onClose, onSubmit, saving = false })
       setError('נא לבחור תאריך לידה')
       return
     }
-    const weight = Number(form.weightKg)
-    if (!form.weightKg || Number.isNaN(weight) || weight <= 0) {
-      setError('נא להזין משקל תקין בק״ג')
-      return
+    const weightRaw = String(form.weightKg ?? '').trim()
+    let weightKg = null
+    if (weightRaw) {
+      const weight = Number(weightRaw)
+      if (Number.isNaN(weight) || weight <= 0) {
+        setError('נא להזין משקל תקין בק״ג')
+        return
+      }
+      weightKg = weight
     }
 
     setError('')
@@ -87,7 +92,7 @@ export default function AddPetModal({ open, onClose, onSubmit, saving = false })
       sex: form.sex,
       sterilized: form.sterilized,
       birthDate: form.birthDate,
-      weightKg: weight,
+      weightKg,
       chip: form.chip.trim() || '',
       image: form.image || '',
     })
@@ -260,7 +265,6 @@ export default function AddPetModal({ open, onClose, onSubmit, saving = false })
             <div className="grid grid-cols-2 gap-3">
               <Field label='משקל בק"ג'>
                 <input
-                  required
                   type="number"
                   min="0.1"
                   step="0.1"

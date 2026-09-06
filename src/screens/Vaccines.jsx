@@ -289,6 +289,7 @@ export default function Vaccines({
   onBack,
   onRefresh,
   onUpdatePet,
+  onDeletePet,
   savingPet = false,
 }) {
   const [editOpen, setEditOpen] = useState(false)
@@ -385,6 +386,11 @@ export default function Vaccines({
   async function handleEditPet(updatedData) {
     const updated = await onUpdatePet?.(pet.id, updatedData)
     if (updated) setEditOpen(false)
+  }
+
+  async function handleDeletePet() {
+    const removed = await onDeletePet?.(pet.id)
+    if (removed) setEditOpen(false)
   }
 
   async function handleEnableNotifications() {
@@ -697,6 +703,7 @@ export default function Vaccines({
         pet={pet}
         onClose={() => !savingPet && setEditOpen(false)}
         onSubmit={handleEditPet}
+        onDelete={handleDeletePet}
         saving={savingPet}
       />
     </div>

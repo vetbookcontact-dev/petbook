@@ -8,6 +8,7 @@ import {
   setDoc,
   updateDoc,
   where,
+  writeBatch,
 } from 'firebase/firestore'
 import {
   dogParks,
@@ -191,7 +192,10 @@ export async function addPet(userId, petData) {
     sterilized: Boolean(petData.sterilized),
     birthDate: petData.birthDate ?? null,
     ageYears: ageYearsFromBirthDate(petData.birthDate),
-    weightKg: Number(petData.weightKg) || 0,
+    weightKg:
+      petData.weightKg == null || petData.weightKg === ''
+        ? null
+        : Number(petData.weightKg) || null,
     chip: petData.chip ?? '',
     image,
     photoURL: image,
@@ -232,7 +236,9 @@ export async function updatePet(userId, petId, updatedData) {
     ageYears: ageYearsFromBirthDate(birthDate),
     weightKg:
       updatedData.weightKg !== undefined
-        ? Number(updatedData.weightKg) || 0
+        ? updatedData.weightKg == null || updatedData.weightKg === ''
+          ? null
+          : Number(updatedData.weightKg) || null
         : current.weightKg,
     chip: updatedData.chip !== undefined ? updatedData.chip ?? '' : current.chip,
     image,
@@ -242,6 +248,18 @@ export async function updatePet(userId, petId, updatedData) {
 
   await updateDoc(petDocRef(userId, petId), omitId(next))
   return { ...next, id: petId }
+}
+
+export async function deletePet(userId, petId) {
+  requireDb()
+  requireUserId(userId)
+  if (!petId) throw new Error('חסר מזהה חיה')
+
+  const vaxSnap = await getDocs(vaccinesCol(userId, petId))
+  const batch = writeBatch(db)
+  vaxSnap.docs.forEach((item) => batch.delete(item.ref))
+  batch.delete(petDocRef(userId, petId))
+  await batch.commit()
 }
 
 export async function getUserProfile(userId) {

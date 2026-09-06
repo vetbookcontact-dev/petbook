@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { Camera, Cat, Dog, PawPrint, X } from 'lucide-react'
+import { Camera, Cat, Dog, PawPrint, Trash2, X } from 'lucide-react'
 import { compressImage } from '../utils/compressImage'
 import PetImage from './PetImage'
 
@@ -33,6 +33,7 @@ export default function EditPetModal({
   pet,
   onClose,
   onSubmit,
+  onDelete,
   saving = false,
 }) {
   const titleId = useId()
@@ -40,11 +41,13 @@ export default function EditPetModal({
   const [form, setForm] = useState(() => petToForm(pet))
   const [error, setError] = useState('')
   const [visible, setVisible] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   useEffect(() => {
     if (open && pet) {
       setForm(petToForm(pet))
       setError('')
+      setConfirmDelete(false)
       requestAnimationFrame(() => setVisible(true))
     } else {
       setVisible(false)
@@ -82,13 +85,19 @@ export default function EditPetModal({
       setError('נא לבחור תאריך לידה')
       return
     }
-    const weight = Number(form.weightKg)
-    if (!form.weightKg || Number.isNaN(weight) || weight <= 0) {
-      setError('נא להזין משקל תקין בק״ג')
-      return
+    const weightRaw = String(form.weightKg ?? '').trim()
+    let weightKg = null
+    if (weightRaw) {
+      const weight = Number(weightRaw)
+      if (Number.isNaN(weight) || weight <= 0) {
+        setError('נא להזין משקל תקין בק״ג')
+        return
+      }
+      weightKg = weight
     }
 
     setError('')
+    setConfirmDelete(false)
     await onSubmit({
       name: form.name.trim(),
       type: form.type,
@@ -96,7 +105,7 @@ export default function EditPetModal({
       sex: form.sex,
       sterilized: form.sterilized,
       birthDate: form.birthDate,
-      weightKg: weight,
+      weightKg,
       chip: form.chip.trim() || '',
       image: form.image || '',
     })
@@ -284,7 +293,6 @@ export default function EditPetModal({
             <div className="grid grid-cols-2 gap-3">
               <Field label='משקל בק"ג'>
                 <input
-                  required
                   type="number"
                   min="0.1"
                   step="0.1"
@@ -312,13 +320,63 @@ export default function EditPetModal({
           </div>
 
           <div className="border-t border-slate-100 px-5 py-4">
-            <button
-              type="submit"
-              disabled={saving}
-              className="w-full rounded-2xl bg-brand-700 py-3.5 text-sm font-bold text-white shadow-soft transition hover:bg-brand-800 disabled:opacity-60"
-            >
-              {saving ? 'שומר...' : 'שמירת שינויים'}
-            </button>
+            {confirmDelete ? (
+              <div className="rounded-2xl border border-red-200 bg-red-50 p-3">
+                <p className="text-sm font-bold text-red-900">
+                  האם אתם בטוחים שברצונכם למחוק את {pet.name}?
+                </p>
+                <p className="mt-1 text-xs font-medium text-red-800">
+                  פעולה זו אינה ניתנת לביטול. חיסונים ורשומות של החיה יימחקו גם כן.
+                </p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => setConfirmDelete(false)}
+                    className="rounded-2xl border border-slate-200 bg-white py-3 text-sm font-bold text-slate-700 disabled:opacity-60"
+                  >
+                    ביטול
+                  </button>
+                  <button
+                    type="button"
+                    disabled={saving || !onDelete}
+                    onClick={async () => {
+                      setError('')
+                      try {
+                        await onDelete()
+                      } catch {
+                        setError('לא הצלחנו למחוק את החיה. נסו שוב.')
+                        setConfirmDelete(false)
+                      }
+                    }}
+                    className="rounded-2xl bg-red-600 py-3 text-sm font-bold text-white shadow-soft transition hover:bg-red-700 disabled:opacity-60"
+                  >
+                    {saving ? 'מוחק...' : 'כן, מחקו'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="w-full rounded-2xl bg-brand-700 py-3.5 text-sm font-bold text-white shadow-soft transition hover:bg-brand-800 disabled:opacity-60"
+                >
+                  {saving ? 'שומר...' : 'שמירת שינויים'}
+                </button>
+                {onDelete && (
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => setConfirmDelete(true)}
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 py-3 text-sm font-bold text-red-700 transition hover:bg-red-100 disabled:opacity-60"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    מחיקת חיה
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </form>
       </div>
